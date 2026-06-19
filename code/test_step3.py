@@ -79,7 +79,8 @@ def main():
         history = user_history.get(user_id)
         history_str = json.dumps(history, sort_keys=True) if history else ""
         cache_key = _compute_cache_key(
-            claim_object, row["user_claim"], image_hashes, history_str
+            claim_object, row["user_claim"], image_hashes, history_str,
+            strategy="zero_shot"
         )
 
         # Load cached response
