@@ -57,6 +57,14 @@ The following metrics summarize the resource usage of the two strategies on the 
 
 *Note: Cost assumes the majority of tokens are prompt (input) tokens due to the base64 encoded images. The JSON structured output is consistently short (usually around 100-150 tokens).*
 
+### Rate Limiting (TPM/RPM) and Resilience Strategy
+
+To handle OpenAI's Tokens-Per-Minute (TPM) and Requests-Per-Minute (RPM) limits during the full test run (44 claims), we implemented the following strategies:
+
+1. **Exponential Backoff:** The `model_call.py` module wraps the API call in a retry loop. If a 429 Rate Limit error is encountered, it applies exponential backoff (2s, 4s, 8s, 16s, 32s) to gracefully throttle requests without crashing the pipeline.
+2. **Deterministic Caching:** To avoid redundant API costs and latency during development (and to support quick re-runs for post-processor tweaks), we built a local JSON cache in `code/.cache`. Cache keys are computed using a SHA-256 hash of the `user_claim`, `claim_object`, `user_history`, strategy name, and a hash of the physical image files. This ensures we never re-evaluate the exact same image and prompt twice.
+3. **Image Usage & Encoding:** Images are base64 encoded. To prevent unnecessary token bloat, the `loader.py` script validates the actual MIME type before encoding, completely skipping broken or non-image files so we don't send garbage bytes to the VLM.
+
 ## 5. Identified Failure Modes and Future Improvements
 
 Despite the improvements from CoT and the deterministic post-processor, some persistent failure modes remain:
