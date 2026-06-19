@@ -27,9 +27,10 @@ from pipeline.loader import (
 )
 from pipeline.model_call import call_vlm
 
-# Load env vars
-load_dotenv(Path(__file__).parent / ".env")
-load_dotenv(Path(__file__).parent.parent / ".env")
+# Load env vars — override=True ensures .env values take precedence
+_script_dir = Path(__file__).resolve().parent
+load_dotenv(_script_dir / ".env", override=True)
+load_dotenv(_script_dir.parent / ".env", override=True)
 
 # Paths
 REPO_ROOT = Path(__file__).parent.parent

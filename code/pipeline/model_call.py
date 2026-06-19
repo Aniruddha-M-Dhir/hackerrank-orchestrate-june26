@@ -391,7 +391,11 @@ def call_vlm(
 
         except Exception as e:
             error_str = str(e)
-            if "429" in error_str or "rate_limit" in error_str.lower():
+            # Auth errors should fail immediately
+            if "401" in error_str or "invalid_api_key" in error_str.lower():
+                print(f"  [AUTH ERROR] {user_id}: Invalid API key")
+                raise
+            elif "429" in error_str or "rate_limit" in error_str.lower():
                 wait_time = (2 ** attempt) * 2  # 2, 4, 8, 16, 32 seconds
                 print(f"  [RATE LIMIT] Attempt {attempt + 1}/{max_retries}, "
                       f"waiting {wait_time}s...")

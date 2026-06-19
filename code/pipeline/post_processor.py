@@ -6,10 +6,12 @@ before writing to output.csv. The LLM output is treated as a suggestion.
 
 Rules:
 1. Invalid Image Override: valid_image=false → evidence_standard_met=false, claim_status=not_enough_information
-2. Contradiction Override: issue_type=none + part visible + user claimed damage → claim_status=contradicted, severity=none
-3. Null State Fallbacks: no supporting images → supporting_image_ids=none
-4. Risk flags history-merge (§2.2): union of LLM visual flags + user_history flags + escalation trigger
-5. Enum validation: all values must be from the allowed lists
+2. Evidence Insufficiency Override: evidence_standard_met=false → claim_status=not_enough_information, add manual_review_required
+3. Contradiction Override: issue_type=none + part visible + user claimed damage → claim_status=contradicted, severity=none
+4. NEI Severity Override: claim_status=not_enough_information → severity=unknown
+5. Null State Fallbacks: no supporting images → supporting_image_ids=none
+6. Risk flags history-merge (§2.2): union of LLM visual flags + user_history flags + escalation trigger
+7. Enum validation: all values must be from the allowed lists
 """
 
 from typing import Optional
@@ -135,11 +137,23 @@ def post_process(
         result["evidence_standard_met"] = False
         result["claim_status"] = "not_enough_information"
 
-    # --- §5.2 Contradiction Override ---
+    # --- §5.2 Evidence Insufficiency Override (NEW from Step 2 analysis) ---
+    # If evidence doesn't meet the standard, the claim cannot be verified
+    if result.get("evidence_standard_met") is False:
+        result["claim_status"] = "not_enough_information"
+        # Flag for manual review since automated review can't proceed
+        result.setdefault("_add_manual_review", True)
+
+    # --- §5.3 Contradiction Override ---
     if (result.get("issue_type") == "none"
             and result.get("claim_status") != "not_enough_information"):
         result["claim_status"] = "contradicted"
         result["severity"] = "none"
+
+    # --- §5.4 NEI Severity Override (NEW from Step 2 analysis) ---
+    # If we can't determine the claim status, we can't assess severity either
+    if result.get("claim_status") == "not_enough_information":
+        result["severity"] = "unknown"
 
     # --- §5.3 Null State Fallbacks ---
     supporting = result.get("supporting_image_ids", [])
@@ -158,6 +172,14 @@ def post_process(
     if isinstance(llm_flags, str):
         llm_flags = [f.strip() for f in llm_flags.split(";")]
     result["risk_flags"] = merge_risk_flags(llm_flags, user_history)
+
+    # --- Inject manual_review_required if flagged by evidence insufficiency ---
+    if result.pop("_add_manual_review", False):
+        if "manual_review_required" not in result["risk_flags"]:
+            result["risk_flags"].append("manual_review_required")
+            # Remove 'none' if it was the only flag
+            result["risk_flags"] = [f for f in result["risk_flags"] if f != "none"]
+            result["risk_flags"] = sorted(result["risk_flags"])
 
     # --- Validate risk flags ---
     validated_flags = [f for f in result["risk_flags"] if f in VALID_RISK_FLAGS]
